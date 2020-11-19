@@ -9,113 +9,133 @@
 using namespace cv;
 using namespace std;
 
-int level_treshold = 0.05;
-int absolute_max_distance = sqrt( 3*( 255^2 ) );
+// set level treshold for stopping iterations in the loop
+double stop_level_treshold = 0.1;
 
-Mat centroid_matrix      = Mat::zeros(1, 6, CV_8UC3);
-Mat prev_centroid_matrix = Mat::zeros(1, 6, CV_8UC3);
+// maximum allowable Evklid distance
+double absolute_max_distance = sqrt( 3*( 255^2 ) );
 
-int centroid_centers_check( )
+// check if centroids coordinates changed or not
+int centroid_centers_check( Mat& centroid_matrix, Mat& next_centroid_matrix )
 {
-  int tmp_var;
+
+  double tmp_value = 0;
+
   for( int i = 0; i < 6; i++ )
   {
-    tmp_var = sqrt( ( centroid_matrix.at<Vec3b>(0,i)[0] - prev_centroid_matrix.at<Vec3b>(0,i)[0] )^2 +
-                    ( centroid_matrix.at<Vec3b>(0,i)[1] - prev_centroid_matrix.at<Vec3b>(0,i)[1] )^2 +
-                    ( centroid_matrix.at<Vec3b>(0,i)[2] - prev_centroid_matrix.at<Vec3b>(0,i)[2] )^2   );
-    if( tmp_var/absolute_max_distance > level_treshold )
+    tmp_value = sqrt( ( abs( centroid_matrix.at<Vec3b>(0,i)[0] - next_centroid_matrix.at<Vec3b>(0,i)[0] ) )^2 +
+                      ( abs( centroid_matrix.at<Vec3b>(0,i)[1] - next_centroid_matrix.at<Vec3b>(0,i)[1] ) )^2 +
+                      ( abs( centroid_matrix.at<Vec3b>(0,i)[2] - next_centroid_matrix.at<Vec3b>(0,i)[2] ) )^2   );
+    if( ( tmp_value/absolute_max_distance ) > stop_level_treshold )
     {
-      prev_centroid_matrix = centroid_matrix;
+      centroid_matrix = next_centroid_matrix;
       return 1;
     }
   }
+
   return 0;
+
 }
 
-int find_pixel_claster( Vec3b pixel )
+// find the claster for current pixel in the input image
+int find_pixel_claster( Mat& centroid_matrix, Vec3b& pixel )
 {
-  vector <int> tmp_var_vector = {0,0,0,0,0,0};
+
+  vector <double> tmp_value_vector = { 0, 0, 0, 0, 0, 0 };
+
   for( int i = 0; i < 6; i++ )
   {
-    tmp_var_vector[i] = sqrt( ( prev_centroid_matrix.at<Vec3b>(0,i)[0] - pixel[0] )^2 +
-                              ( prev_centroid_matrix.at<Vec3b>(0,i)[1] - pixel[1] )^2 +
-                              ( prev_centroid_matrix.at<Vec3b>(0,i)[2] - pixel[2] )^2   );
+    tmp_value_vector[i] = sqrt( ( abs( centroid_matrix.at<Vec3b>(0,i)[0] - pixel[0] ) )^2 +
+                                ( abs( centroid_matrix.at<Vec3b>(0,i)[1] - pixel[1] ) )^2 +
+                                ( abs( centroid_matrix.at<Vec3b>(0,i)[2] - pixel[2] ) )^2   );
   }
-  return( min_element( tmp_var_vector.begin(), tmp_var_vector.end() ) - tmp_var_vector.begin() );
+
+  return( min_element( tmp_value_vector.begin(), tmp_value_vector.end() ) - tmp_value_vector.begin() );
+
 }
 
-void centroid_calc( Mat img, Mat mask )
+// calculate new centroids for each claster
+void claster_centroids_calc( Mat& input_img, Mat& claster_matrix, Mat& next_centroid_matrix )
 {
-  int centroid_avg[6][3] = {};
-  int centroid_pix_num[6] = {};
-  for( int i = 0; i < img.rows; i++ )
-  {
-    for( int j = 0; j < img.cols; j++ )
-    {
-      centroid_avg[mask.at<uchar>(i,j)][0] += img.at<Vec3b>(i,j)[0];
-      centroid_avg[mask.at<uchar>(i,j)][1] += img.at<Vec3b>(i,j)[1];
-      centroid_avg[mask.at<uchar>(i,j)][2] += img.at<Vec3b>(i,j)[2];
-      centroid_pix_num[mask.at<uchar>(i,j)] += 1;
-    }
-  }
-  for( int i = 0; i < 6; i++ )
-  {
-    centroid_matrix.at<Vec3b>(0,i)[0] = centroid_avg[i][0]/centroid_pix_num[i];
-    centroid_matrix.at<Vec3b>(0,i)[1] = centroid_avg[i][1]/centroid_pix_num[i];
-    centroid_matrix.at<Vec3b>(0,i)[2] = centroid_avg[i][2]/centroid_pix_num[i];
-  }
-}
 
-void claster_divide( Mat input_img, Mat mask )
-{
-  int tmp_pix_num = 0;
+  Mat centroid_avg          = Mat::zeros(1, 6, CV_64FC3);
+  Mat centroid_pixel_number = Mat::zeros(1, 6, CV_64FC1);
+
   for( int i = 0; i < input_img.rows; i++ )
   {
     for( int j = 0; j < input_img.cols; j++ )
-    { 
-      tmp_pix_num = mask.at<uchar>(i,j);
-      input_img.at<Vec3b>(i,j)[0] = prev_centroid_matrix.at<Vec3b>(0,tmp_pix_num)[0];
-      input_img.at<Vec3b>(i,j)[1] = prev_centroid_matrix.at<Vec3b>(0,tmp_pix_num)[1];
-      input_img.at<Vec3b>(i,j)[2] = prev_centroid_matrix.at<Vec3b>(0,tmp_pix_num)[2];
+    {
+      centroid_avg.at<Vec3d>(0, claster_matrix.at<uchar>(i,j))[0]         += input_img.at<Vec3b>(i,j)[0];
+      centroid_avg.at<Vec3d>(0, claster_matrix.at<uchar>(i,j))[1]         += input_img.at<Vec3b>(i,j)[1];
+      centroid_avg.at<Vec3d>(0, claster_matrix.at<uchar>(i,j))[2]         += input_img.at<Vec3b>(i,j)[2];
+      centroid_pixel_number.at<double>(0, claster_matrix.at<uchar>(i,j))  += 1;
+    }
+  }
+
+  for( int i = 0; i < 6; i++ )
+  {
+    centroid_avg.at<Vec3d>(0,i)[0] = centroid_avg.at<Vec3d>(0,i)[0] / centroid_pixel_number.at<double>(0,i);
+    centroid_avg.at<Vec3d>(0,i)[1] = centroid_avg.at<Vec3d>(0,i)[1] / centroid_pixel_number.at<double>(0,i);
+    centroid_avg.at<Vec3d>(0,i)[2] = centroid_avg.at<Vec3d>(0,i)[2] / centroid_pixel_number.at<double>(0,i);
+  }
+  
+  centroid_avg.convertTo( next_centroid_matrix, CV_8UC3 );
+
+}
+
+// divide original image into calculated clasters
+void divide_image_into_clasters( Mat& input_img, Mat& claster_mask, Mat& centroid_matrix )
+{
+  for( int i = 0; i < input_img.rows; i++ )
+  {
+    for( int j = 0; j < input_img.cols; j++ )
+    {
+      input_img.at<Vec3b>(i,j)[0] = centroid_matrix.at<Vec3b>(0,claster_mask.at<uchar>(i,j))[0];
+      input_img.at<Vec3b>(i,j)[1] = centroid_matrix.at<Vec3b>(0,claster_mask.at<uchar>(i,j))[1];
+      input_img.at<Vec3b>(i,j)[2] = centroid_matrix.at<Vec3b>(0,claster_mask.at<uchar>(i,j))[2];
     }
   }
 }
 
 int main(int argc, char *argv[])
 {
-  QApplication a(argc, argv);
 
-  // centroid matrix initialization
-  prev_centroid_matrix.at<Vec3b>(0,0) = {0  ,0  ,0  };
-  prev_centroid_matrix.at<Vec3b>(0,1) = {50 ,50 ,50 };
-  prev_centroid_matrix.at<Vec3b>(0,2) = {100,100,100};
-  prev_centroid_matrix.at<Vec3b>(0,3) = {150,150,150};
-  prev_centroid_matrix.at<Vec3b>(0,4) = {200,200,200};
-  prev_centroid_matrix.at<Vec3b>(0,5) = {255,255,255};
+    QApplication a(argc, argv);
 
-  Mat img_orig = imread("/home/skr/qt_projects/lab_1/nature.jpg");
-  Mat img_processing = img_orig.clone();
+    Mat centroid_matrix      = Mat::zeros(1, 6, CV_8UC3);
+    Mat next_centroid_matrix = Mat::zeros(1, 6, CV_8UC3);
 
-  Mat pix_matrix = Mat::zeros(img_orig.size(), CV_8U);
+    centroid_matrix.at<Vec3b>(0,0)[0] = 0;   centroid_matrix.at<Vec3b>(0,0)[1] = 0;   centroid_matrix.at<Vec3b>(0,0)[2] = 0;  
+    centroid_matrix.at<Vec3b>(0,1)[0] = 50;  centroid_matrix.at<Vec3b>(0,1)[1] = 50;  centroid_matrix.at<Vec3b>(0,1)[2] = 50; 
+    centroid_matrix.at<Vec3b>(0,2)[0] = 100; centroid_matrix.at<Vec3b>(0,2)[1] = 100; centroid_matrix.at<Vec3b>(0,2)[2] = 100;
+    centroid_matrix.at<Vec3b>(0,3)[0] = 150; centroid_matrix.at<Vec3b>(0,3)[1] = 150; centroid_matrix.at<Vec3b>(0,3)[2] = 150;
+    centroid_matrix.at<Vec3b>(0,4)[0] = 200; centroid_matrix.at<Vec3b>(0,4)[1] = 200; centroid_matrix.at<Vec3b>(0,4)[2] = 200;
+    centroid_matrix.at<Vec3b>(0,5)[0] = 255; centroid_matrix.at<Vec3b>(0,5)[1] = 255; centroid_matrix.at<Vec3b>(0,5)[2] = 255;
 
-  int centroid_changed = 1; 
-  while( centroid_changed == 1 )
-  { 
-    for( int i = 0; i < img_orig.rows; i++ )
+    Mat img_orig = imread("/home/skr/qt_projects/lab_1/nature.jpg");
+    Mat img_processing = img_orig.clone();
+
+    Mat claster_matrix = Mat::zeros( img_processing.size(), CV_8UC1 );
+
+    int centroid_changed = 1;
+
+    while( centroid_changed != 0 )
     {
-      for( int j = 0; j < img_orig.cols; j++ )
+      for( int i = 0; i < img_processing.rows; i++ )
       {
-        pix_matrix.at<uchar>(i,j) = find_pixel_claster( img_orig.at<Vec3b>(i,j) );
+        for( int j = 0; j < img_processing.cols; j++ )
+        {
+          claster_matrix.at<uchar>(i,j) = find_pixel_claster( centroid_matrix, img_processing.at<Vec3b>(i,j) );
+        }
       }
+      claster_centroids_calc( img_processing, claster_matrix, next_centroid_matrix );
+      centroid_changed = centroid_centers_check( centroid_matrix, next_centroid_matrix );
     }
-    centroid_calc( img_orig, pix_matrix );
-    centroid_changed = centroid_centers_check();
-  }
-  
-  claster_divide( img_processing, pix_matrix );
-  imshow( "Original image", img_orig );
-  imshow( "Clastered image", img_processing );
-  waitKey();
 
-  return a.exec();
+    divide_image_into_clasters( img_processing, claster_matrix, centroid_matrix );
+    imshow( "Original image", img_orig );
+    imshow( "Clastered image", img_processing );
+    waitKey();
+
+    return a.exec();
 }
