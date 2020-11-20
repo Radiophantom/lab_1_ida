@@ -10,10 +10,16 @@ using namespace cv;
 using namespace std;
 
 // set level treshold for stopping iterations in the loop
-double stop_level_treshold = 0.1;
+const double stop_level_treshold = 0.01;
 
 // maximum allowable Evklid distance
-double absolute_max_distance = sqrt( 3*( 255^2 ) );
+const double absolute_max_distance = 255*sqrt(3);
+
+// Evklid distance calculate
+double evklid_calc( Vec3b& x, Vec3b& y )
+{
+  return( sqrt( pow( (x[0] - y[0]), 2 ) + pow( ( x[1] - y[1] ), 2 ) + pow( ( x[2] - y[2] ), 2 ) ) );
+}
 
 // check if centroids coordinates changed or not
 int centroid_centers_check( Mat& centroid_matrix, Mat& next_centroid_matrix )
@@ -23,10 +29,8 @@ int centroid_centers_check( Mat& centroid_matrix, Mat& next_centroid_matrix )
 
   for( int i = 0; i < 6; i++ )
   {
-    tmp_value = sqrt( ( abs( centroid_matrix.at<Vec3b>(0,i)[0] - next_centroid_matrix.at<Vec3b>(0,i)[0] ) )^2 +
-                      ( abs( centroid_matrix.at<Vec3b>(0,i)[1] - next_centroid_matrix.at<Vec3b>(0,i)[1] ) )^2 +
-                      ( abs( centroid_matrix.at<Vec3b>(0,i)[2] - next_centroid_matrix.at<Vec3b>(0,i)[2] ) )^2   );
-    if( ( tmp_value/absolute_max_distance ) > stop_level_treshold )
+    tmp_value = ( evklid_calc( centroid_matrix.at<Vec3b>(0,i), next_centroid_matrix.at<Vec3b>(0,i) ) / absolute_max_distance );
+    if( tmp_value > stop_level_treshold )
     {
       centroid_matrix = next_centroid_matrix;
       return 1;
@@ -37,20 +41,38 @@ int centroid_centers_check( Mat& centroid_matrix, Mat& next_centroid_matrix )
 
 }
 
+// find index of min element in massive
+int min_element_index( double mas[6] )
+{
+
+  int index = 0;
+  double min_element = mas[0];
+  
+  for( int i = 1; i < 6; i++ )
+  {
+    if( mas[i] < min_element )
+    {
+      index = i;
+      min_element = mas[i];
+    } 
+  }
+
+  return( index );
+
+};
+
 // find the claster for current pixel in the input image
 int find_pixel_claster( Mat& centroid_matrix, Vec3b& pixel )
 {
 
-  vector <double> tmp_value_vector = { 0, 0, 0, 0, 0, 0 };
+  double tmp_mas[6] = { };
 
   for( int i = 0; i < 6; i++ )
   {
-    tmp_value_vector[i] = sqrt( ( abs( centroid_matrix.at<Vec3b>(0,i)[0] - pixel[0] ) )^2 +
-                                ( abs( centroid_matrix.at<Vec3b>(0,i)[1] - pixel[1] ) )^2 +
-                                ( abs( centroid_matrix.at<Vec3b>(0,i)[2] - pixel[2] ) )^2   );
+    tmp_mas[i] = evklid_calc( centroid_matrix.at<Vec3b>(0,i), pixel );
   }
 
-  return( min_element( tmp_value_vector.begin(), tmp_value_vector.end() ) - tmp_value_vector.begin() );
+  return( min_element_index( tmp_mas ) );
 
 }
 
@@ -113,22 +135,22 @@ int main(int argc, char *argv[])
     centroid_matrix.at<Vec3b>(0,5)[0] = 255; centroid_matrix.at<Vec3b>(0,5)[1] = 255; centroid_matrix.at<Vec3b>(0,5)[2] = 255;
 
     Mat img_orig = imread("/home/skr/qt_projects/lab_1/nature.jpg");
-    Mat img_processing = img_orig.clone();
 
-    Mat claster_matrix = Mat::zeros( img_processing.size(), CV_8UC1 );
+    Mat img_processing = Mat::zeros( img_orig.size(), CV_8UC3 );
+    Mat claster_matrix = Mat::zeros( img_orig.size(), CV_8UC1 );
 
     int centroid_changed = 1;
 
     while( centroid_changed != 0 )
     {
-      for( int i = 0; i < img_processing.rows; i++ )
+      for( int i = 0; i < img_orig.rows; i++ )
       {
-        for( int j = 0; j < img_processing.cols; j++ )
+        for( int j = 0; j < img_orig.cols; j++ )
         {
-          claster_matrix.at<uchar>(i,j) = find_pixel_claster( centroid_matrix, img_processing.at<Vec3b>(i,j) );
+          claster_matrix.at<uchar>(i,j) = find_pixel_claster( centroid_matrix, img_orig.at<Vec3b>(i,j) );
         }
       }
-      claster_centroids_calc( img_processing, claster_matrix, next_centroid_matrix );
+      claster_centroids_calc( img_orig, claster_matrix, next_centroid_matrix );
       centroid_changed = centroid_centers_check( centroid_matrix, next_centroid_matrix );
     }
 
